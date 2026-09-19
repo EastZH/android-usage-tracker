@@ -31,3 +31,6 @@ pc/data/
 pc/*.db
 pc/*.db-wal
 pc/*.db-shm
+
+# 发布产物，按需构建，不入库
+*.apk
