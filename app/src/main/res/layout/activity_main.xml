@@ -1,0 +1,207 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- ===== 顶部状态区（紧凑） ===== -->
+
+    <TextView
+        android:id="@+id/statusValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textSize="15sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/errorValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:textSize="12sp" />
+
+    <!--
+      日期导航：[◀] [●] [▶]。箭头按当前口径步进（今天→±1天，本周→±1周，本月→±1月），
+      中间的圆点回到当前周期。一套控件管两种粒度，不用两套导航。
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/prevButton"
+            android:layout_width="52dp"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:text="@string/nav_prev"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/nowButton"
+            android:layout_width="52dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:minWidth="0dp"
+            android:text="@string/nav_now"
+            android:textSize="15sp" />
+
+        <Button
+            android:id="@+id/nextButton"
+            android:layout_width="52dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:minWidth="0dp"
+            android:text="@string/nav_next"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/periodLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:layout_weight="1"
+            android:gravity="end"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/grantButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/action_grant"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/syncButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/action_sync"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/exportButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/action_export"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/exportResult"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="11sp" />
+
+    <TextView
+        android:id="@+id/statsValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="11sp" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="12dp"
+        android:background="#22000000" />
+
+    <!-- ===== 区间选择 ===== -->
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/rangeToday"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/range_today"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/rangeWeek"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/range_week"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/rangeMonth"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:layout_weight="1"
+            android:text="@string/range_month"
+            android:textSize="13sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/rangeLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/totalValue"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 手指按在分钟格上时显示"几点 + 哪个 App"。放在管子上方，免得被手指盖住 -->
+    <TextView
+        android:id="@+id/touchedValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <!--
+      两根管子：上面选小时，下面显示该小时的分钟。
+      周/月下会隐藏 —— 那里问的是"哪些 App 用得多"，不是"几点在干什么"。
+    -->
+    <com.east.time.ui.TimeGrid
+        android:id="@+id/timeGrid"
+        android:layout_width="match_parent"
+        android:layout_height="150dp" />
+
+    <ListView
+        android:id="@+id/usageList"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="4dp"
+        android:layout_weight="1"
+        android:divider="#11000000"
+        android:dividerHeight="1dp" />
+
+</LinearLayout>

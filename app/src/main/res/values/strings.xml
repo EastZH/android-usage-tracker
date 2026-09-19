@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Time</string>
+    <string name="action_grant">授权</string>
+    <string name="action_sync">同步</string>
+    <string name="action_export">导出</string>
+
+    <string name="nav_prev">◀</string>
+    <string name="nav_now">●</string>
+    <string name="nav_next">▶</string>
+
+    <string name="range_today">今天</string>
+    <string name="range_week">本周</string>
+    <string name="range_month">本月</string>
+    <string name="day_today">今天</string>
+    <string name="no_minute_detail">这天没有分钟级明细（只有系统回填的当天总量）</string>
+    <string name="range_label_day">这天各应用</string>
+    <string name="range_label_today">今天各应用</string>
+    <string name="range_label_hour">%02d:00 这一小时</string>
+    <string name="range_label_week">本周用时（周一起）</string>
+    <string name="range_label_month">本月用时</string>
+</resources>
