@@ -31,8 +31,8 @@ android {
         // 定在 29 可以省掉一堆 Build.VERSION 分支
         minSdk = 29
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
     }
 
     signingConfigs {
