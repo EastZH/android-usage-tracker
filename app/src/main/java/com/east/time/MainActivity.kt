@@ -2,6 +2,8 @@ package com.east.time
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -9,6 +11,7 @@ import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ListView
+import android.widget.Switch
 import android.widget.TextView
 import com.east.time.collect.UsageStatsSource
 import com.east.time.sync.DaySessions
@@ -17,6 +20,7 @@ import com.east.time.sync.PackageUsage
 import com.east.time.sync.SyncRepository
 import com.east.time.sync.SyncScheduler
 import com.east.time.sync.UsageRange
+import com.east.time.notify.UsageNotifier
 import com.east.time.ui.TimeGrid
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -46,6 +50,8 @@ class MainActivity : Activity() {
     private lateinit var syncButton: Button
     private lateinit var exportButton: Button
     private lateinit var exportResult: TextView
+    private lateinit var notifySwitch: Switch
+    private lateinit var notifyCount: TextView
     private lateinit var rangeToday: Button
     private lateinit var rangeWeek: Button
     private lateinit var rangeMonth: Button
@@ -63,6 +69,7 @@ class MainActivity : Activity() {
     private var periodUsage: List<PackageUsage> = emptyList()
     private var hourBuckets: List<HourBucket> = emptyList()
     private var minuteCellsByHour: List<List<String?>> = emptyList()
+    private var lockedMinuteByHour: List<List<Boolean>> = emptyList()
 
     /** 适配器的数据源。UI 线程独占，别处不要碰 */
     private val rowItems = mutableListOf<String>()
@@ -95,6 +102,8 @@ class MainActivity : Activity() {
         syncButton = findViewById(R.id.syncButton)
         exportButton = findViewById(R.id.exportButton)
         exportResult = findViewById(R.id.exportResult)
+        notifySwitch = findViewById(R.id.notifySwitch)
+        notifyCount = findViewById(R.id.notifyCount)
         prevButton = findViewById(R.id.prevButton)
         nowButton = findViewById(R.id.nowButton)
         nextButton = findViewById(R.id.nextButton)
@@ -110,6 +119,8 @@ class MainActivity : Activity() {
         timeGrid.onHourSelected = { hour ->
             timeGrid.minuteCells =
                 if (hour >= 0) minuteCellsByHour.getOrElse(hour) { emptyList() } else emptyList()
+            timeGrid.lockedMinuteCells =
+                if (hour >= 0) lockedMinuteByHour.getOrElse(hour) { emptyList() } else emptyList()
             touchedValue.text = ""
             renderBelowList()
         }
@@ -162,6 +173,24 @@ class MainActivity : Activity() {
         }
 
         exportButton.setOnClickListener { doExport() }
+
+        notifySwitch.setOnCheckedChangeListener { _, checked ->
+            if (!checked) {
+                repo.notifyEnabled = false
+                refresh()
+                return@setOnCheckedChangeListener
+            }
+            // Android 13+ 通知要运行时权限。没权限就先申请，**权限没下来之前不打开开关** ——
+            // 否则开关显示"已开启"但一条通知也发不出来，用户完全无从判断。
+            if (UsageNotifier.canPost(this)) {
+                enableNotify()
+            } else {
+                notifySwitch.isChecked = false
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFY)
+                }
+            }
+        }
 
         updateRangeButtons()
         refresh()
@@ -270,6 +299,29 @@ class MainActivity : Activity() {
         )
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != REQ_NOTIFY) return
+        if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            enableNotify()
+        } else {
+            hintValue.text = "没有通知权限，亮屏提醒无法工作。可到系统设置里授予「通知」权限。"
+            notifySwitch.isChecked = false
+        }
+    }
+
+    private fun enableNotify() {
+        repo.notifyEnabled = true
+        notifySwitch.isChecked = true
+        // 立刻补一次：开关刚打开时，今天的亮屏时长可能早就过了好几档
+        SyncScheduler.syncNow(this)
+        refresh()
+    }
+
     private fun refresh() {
         val seq = ++refreshSeq
         scope.launch {
@@ -314,6 +366,13 @@ class MainActivity : Activity() {
                 else -> repo.lastError ?: ""
             }
 
+            notifySwitch.isChecked = repo.notifyEnabled
+            notifyCount.text = if (repo.notifyEnabled) {
+                "今天 " + repo.todayNotifyCount + " 次"
+            } else {
+                ""
+            }
+
             statsValue.text = buildString {
                 append("事件 ").append(events).append(" 行（保留 30 天）")
                 append(" · 日聚合 ").append(rollups).append(" 行（永久")
@@ -349,10 +408,13 @@ class MainActivity : Activity() {
             if (isDayMode && grid != null) {
                 hourBuckets = buckets
                 minuteCellsByHour = grid.minuteCellsByHour
+                lockedMinuteByHour = grid.lockedMinuteByHour
                 timeGrid.hourCells = grid.hourCells
+                timeGrid.lockedHourCells = grid.lockedHourCells
                 // 刷新会重设网格，选中状态跟着复位
                 timeGrid.selectedHour = -1
                 timeGrid.minuteCells = emptyList()
+                timeGrid.lockedMinuteCells = emptyList()
                 // 没有明细的日子要说清楚，不能留一片全灰的管子让人误读成"那天没碰手机"
                 touchedValue.text = if (grid.hasEvents) {
                     ""
@@ -456,5 +518,6 @@ class MainActivity : Activity() {
 
     private companion object {
         const val TAG = "UsageSync"
+        const val REQ_NOTIFY = 2002
     }
 }

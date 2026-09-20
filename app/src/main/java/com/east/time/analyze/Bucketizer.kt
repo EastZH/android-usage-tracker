@@ -67,6 +67,44 @@ object Bucketizer {
     }
 
     /**
+     * 每格**是否以黑屏为主**。
+     *
+     * 用来把"设备没在用"（黑屏）和"数据没记到"（背景色）区分开 —— 两者在时间轴上
+     * 都是"没有 App 前台"，但含义完全不同：前者正常，后者说明采集断了。
+     *
+     * 用"过半"而不是"沾边就算"：一小时里屏幕黑了 5 分钟、用了 55 分钟，那这一格
+     * 该显示是"在用"，不是"锁屏"。
+     */
+    fun screenOffPerBucket(
+        offIntervals: List<Interval>,
+        fromMs: Long,
+        toMs: Long,
+        count: Int,
+    ): List<Boolean> {
+        if (count <= 0) return emptyList()
+        val span = toMs - fromMs
+        if (span <= 0) return List(count) { false }
+
+        // 先累加每格的黑屏毫秒数，最后再和格子宽度的一半比较
+        val offMs = LongArray(count)
+        for (iv in offIntervals) {
+            if (iv.endMs <= fromMs || iv.startMs >= toMs) continue
+            val lo = maxOf(iv.startMs, fromMs)
+            val hi = minOf(iv.endMs, toMs)
+            var i = ((lo - fromMs) * count / span).toInt().coerceIn(0, count - 1)
+            var pos = lo
+            while (pos < hi && i < count) {
+                val bucketEnd = fromMs + span * (i + 1) / count
+                val seg = minOf(hi, bucketEnd)
+                offMs[i] += seg - pos
+                pos = seg
+                i++
+            }
+        }
+        return (0 until count).map { offMs[it] * 2 >= span / count }
+    }
+
+    /**
      * 每格的总时长（不只是最长的那个应用）。用来判断这一格"有没有东西"、
      * 以及给格子做深浅着色。
      */

@@ -12,6 +12,7 @@ import com.east.time.data.DailyRollup
 import com.east.time.data.DailyStat
 import com.east.time.data.UsageEvent
 import com.east.time.export.ExportWriter
+import com.east.time.notify.UsageNotifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -105,6 +106,7 @@ class SyncRepository(context: Context) {
             rebuildRollups()
             backfillFromSystem()
             exportData()
+            maybeNotify()
             pruneEvents(now)
 
             prefs.edit().putLong(KEY_LAST_SYNC, now).remove(KEY_LAST_ERROR).apply()
@@ -193,6 +195,68 @@ class SyncRepository(context: Context) {
         val prev = backfillEarliest
         if (prev == null || boundary < prev) {
             prefs.edit().putString(KEY_BACKFILL_EARLIEST, boundary).apply()
+        }
+    }
+
+    // ---------- 亮屏提醒 ----------
+
+    var notifyEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NOTIFY_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_NOTIFY_ENABLED, value).apply()
+
+    /** 今天已经发出的提醒条数 */
+    val todayNotifyCount: Int get() = prefs.getInt(KEY_NOTIFY_COUNT, 0)
+
+    /** 今天累计亮屏毫秒数 */
+    suspend fun todayScreenOnMs(): Long = withContext(Dispatchers.IO) {
+        val dayStart = startOfTodayMillis()
+        val now = System.currentTimeMillis()
+        val events = dao.eventsBetween(dayStart - UsageStatsSource.DAY_MS, now)
+        SessionDeriver.totalMillis(SessionDeriver.screenOnIntervals(events, dayStart, now))
+    }
+
+    /**
+     * 亮屏累计每跨过一个 [NOTIFY_STEP_MS] 就发一条提醒。
+     *
+     * 放在同步流程里做，因为**只有这个进程被系统唤醒时才有机会执行** ——
+     * 常驻定时器在国产 ROM 上活不下来。代价是提醒最多迟到 15 分钟（同步周期），
+     * 但这个提醒本身就是"你已经用了很久了"的提示，晚几分钟无关紧要。
+     *
+     * 一次跨过多个台阶时**只发一条**：首次同步时可能一整天已经过去大半，
+     * 连发五六条通知是骚扰，不是提醒。
+     */
+    private suspend fun maybeNotify() {
+        if (!notifyEnabled) return
+        if (!UsageNotifier.canPost(appContext)) return
+
+        val today = formatDate(startOfTodayMillis())
+        // 跨天要把计数和台阶一起归零，否则第二天不会再提醒
+        if (prefs.getString(KEY_NOTIFY_DATE, null) != today) {
+            prefs.edit()
+                .putString(KEY_NOTIFY_DATE, today)
+                .putInt(KEY_NOTIFY_COUNT, 0)
+                .putInt(KEY_NOTIFY_STEP, 0)
+                .apply()
+        }
+
+        val onMs = todayScreenOnMs()
+        val step = (onMs / NOTIFY_STEP_MS).toInt()
+        val done = prefs.getInt(KEY_NOTIFY_STEP, 0)
+        if (step <= done) return
+
+        val count = prefs.getInt(KEY_NOTIFY_COUNT, 0) + 1
+        val h = onMs / 3_600_000
+        val m = (onMs % 3_600_000) / 60_000
+        val posted = UsageNotifier.post(
+            appContext,
+            "今天已亮屏 ${h}小时${m}分",
+            "累计每满 ${NOTIFY_STEP_MS / 60_000} 分钟提醒一次，这是今天的第 $count 次。",
+        )
+        if (posted) {
+            prefs.edit()
+                .putInt(KEY_NOTIFY_STEP, step)
+                .putInt(KEY_NOTIFY_COUNT, count)
+                .apply()
         }
     }
 
@@ -428,7 +492,13 @@ class SyncRepository(context: Context) {
      */
     suspend fun dayGrid(dayStartMs: Long): TodayGrid = withContext(Dispatchers.IO) {
         val dayStart = startOfDay(dayStartMs)
+        val dayEnd = dayStart + UsageStatsSource.DAY_MS
         val sessions = daySessionsFrom(dayStart).firstOrNull()?.sessions ?: emptyList()
+        // 前后各放宽一天取事件：跨零点的黑屏区间起点在当天之外，不放宽会丢掉
+        val events = dao.eventsBetween(
+            dayStart - UsageStatsSource.DAY_MS, dayEnd + UsageStatsSource.DAY_MS,
+        )
+        val off = SessionDeriver.screenOffIntervals(events, dayStart, dayEnd)
         val hourMs = UsageStatsSource.DAY_MS / 24
 
         TodayGrid(
@@ -436,13 +506,13 @@ class SyncRepository(context: Context) {
             // 必须把这个状态传给界面，否则用户会以为"那天没碰手机"，
             // 而下面的列表里明明有数字。
             hasEvents = sessions.isNotEmpty(),
-            hourCells = Bucketizer.dominantPerBucket(
-                sessions, dayStart, dayStart + UsageStatsSource.DAY_MS, 24,
-            ),
+            hourCells = Bucketizer.dominantPerBucket(sessions, dayStart, dayEnd, 24),
+            lockedHourCells = Bucketizer.screenOffPerBucket(off, dayStart, dayEnd, 24),
             minuteCellsByHour = (0 until 24).map { h ->
-                Bucketizer.dominantPerBucket(
-                    sessions, dayStart + h * hourMs, dayStart + (h + 1) * hourMs, 60,
-                )
+                Bucketizer.dominantPerBucket(sessions, dayStart + h * hourMs, dayStart + (h + 1) * hourMs, 60)
+            },
+            lockedMinuteByHour = (0 until 24).map { h ->
+                Bucketizer.screenOffPerBucket(off, dayStart + h * hourMs, dayStart + (h + 1) * hourMs, 60)
             },
         )
     }
@@ -576,6 +646,14 @@ class SyncRepository(context: Context) {
 
         const val HOUR_MS = 60L * 60 * 1000
 
+        const val KEY_NOTIFY_ENABLED = "notify_enabled"
+        const val KEY_NOTIFY_COUNT = "notify_count"
+        const val KEY_NOTIFY_STEP = "notify_step"
+        const val KEY_NOTIFY_DATE = "notify_date"
+
+        /** 亮屏累计每满这么久提醒一次 */
+        const val NOTIFY_STEP_MS = 30L * 60 * 1000
+
         /** 原始事件的保留天数。日聚合永久保留，不受此影响 */
         const val EVENT_RETENTION_DAYS = 30L
     }
@@ -602,8 +680,12 @@ data class TodayGrid(
     val hasEvents: Boolean,
     /** 24 格，每格一小时。null = 该小时无前台活动 */
     val hourCells: List<String?>,
+    /** 24 格，每格一小时。true = 这一小时以黑屏（息屏/锁屏）为主 */
+    val lockedHourCells: List<Boolean>,
     /** 24 行 × 60 格，每格一分钟 */
     val minuteCellsByHour: List<List<String?>>,
+    /** 24 行 × 60 格，true = 这一分钟以黑屏为主 */
+    val lockedMinuteByHour: List<List<Boolean>>,
 )
 
 /** 今天某一个小时的使用情况 */

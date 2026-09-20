@@ -5,6 +5,8 @@
     <string name="action_sync">同步</string>
     <string name="action_export">导出</string>
 
+    <string name="notify_switch">亮屏提醒（每 30 分钟）</string>
+
     <string name="nav_prev">◀</string>
     <string name="nav_now">●</string>
     <string name="nav_next">▶</string>

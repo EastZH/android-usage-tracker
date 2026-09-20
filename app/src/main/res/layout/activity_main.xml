@@ -102,6 +102,31 @@
             android:textSize="12sp" />
     </LinearLayout>
 
+    <!--
+      亮屏提醒开关。默认关 —— 通知是打扰性行为，不该未经同意就开着。
+    -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <Switch
+            android:id="@+id/notifySwitch"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/notify_switch"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/notifyCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textSize="12sp" />
+    </LinearLayout>
+
     <TextView
         android:id="@+id/exportResult"
         android:layout_width="match_parent"

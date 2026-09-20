@@ -104,6 +104,75 @@ object SessionDeriver {
         return totals
     }
 
+    /**
+     * 黑屏区间：设备开着但屏幕是黑的（息屏或锁屏）。
+     *
+     * 用来把"这段设备没在用"和"这段数据没记到"区分开 —— 两者在时间轴上都是
+     * "没有 App 前台"，但含义完全不同：前者正常，后者说明采集断了。
+     *
+     * 起点是 `SCREEN_NON_INTERACTIVE` 或 `KEYGUARD_SHOWN`，终点是
+     * `SCREEN_INTERACTIVE` 或 `KEYGUARD_HIDDEN`。两者可能交错出现
+     * （按电源键会同时触发息屏和锁屏），所以用"当前是否黑屏"的布尔状态跟，
+     * 而不是给每个事件单独开区间 —— 否则会得到一堆重叠区间。
+     */
+    fun screenOffIntervals(
+        events: List<UsageEvent>,
+        fromMs: Long,
+        toMs: Long,
+    ): List<Interval> = screenStateIntervals(events, fromMs, toMs, wantOff = true)
+
+    /**
+     * 亮屏区间：屏幕可用（`SCREEN_INTERACTIVE` 或解锁）的时段。
+     *
+     * 只统计**明确知道亮着**的时段。数据断掉的那段不算进来 —— 不知道就没资格算，
+     * 宁可少算也不能凭空多算。
+     */
+    fun screenOnIntervals(
+        events: List<UsageEvent>,
+        fromMs: Long,
+        toMs: Long,
+    ): List<Interval> = screenStateIntervals(events, fromMs, toMs, wantOff = false)
+
+    private fun screenStateIntervals(
+        events: List<UsageEvent>,
+        fromMs: Long,
+        toMs: Long,
+        wantOff: Boolean,
+    ): List<Interval> {
+        val out = ArrayList<Interval>(256)
+        var off = false
+        var start = 0L
+
+        for (e in events) {
+            if (e.tsMillis > toMs) break
+            val newOff = when (e.eventType) {
+                TYPE_SCREEN_OFF, TYPE_KEYGUARD_SHOWN, TYPE_DEVICE_SHUTDOWN -> true
+                TYPE_SCREEN_ON, TYPE_KEYGUARD_HIDDEN, TYPE_DEVICE_STARTUP -> false
+                else -> continue
+            }
+            if (newOff == off) continue
+            // 只记录想要的那种状态的那一段
+            if (newOff == wantOff) {
+                start = e.tsMillis
+            } else if (off == wantOff) {
+                val lo = maxOf(start, fromMs)
+                val hi = minOf(e.tsMillis, toMs)
+                if (hi > lo) out += Interval(lo, hi)
+            }
+            off = newOff
+        }
+
+        // 窗口结束时仍是目标状态：算到窗口末尾
+        if (off == wantOff) {
+            val lo = maxOf(start, fromMs)
+            if (toMs > lo) out += Interval(lo, toMs)
+        }
+        return out
+    }
+
+    /** 一组区间的总时长。注意区间之间可能有空隙，不能拿首尾相减 */
+    fun totalMillis(intervals: List<Interval>): Long = intervals.sumOf { it.durationMs }
+
     private fun emit(
         out: MutableList<Session>,
         pkg: String,
@@ -121,10 +190,20 @@ object SessionDeriver {
     const val TYPE_PAUSED = "ACTIVITY_PAUSED"
     const val TYPE_STOPPED = "ACTIVITY_STOPPED"
 
-    /** 这三个事件意味着"此刻没有任何应用在前台"，用来闭合悬空区间 */
+    /** 这几个事件意味着"此刻没有任何应用在前台"，用来闭合悬空区间 */
     const val TYPE_SCREEN_OFF = "SCREEN_NON_INTERACTIVE"
     const val TYPE_KEYGUARD_SHOWN = "KEYGUARD_SHOWN"
     const val TYPE_DEVICE_SHUTDOWN = "DEVICE_SHUTDOWN"
+
+    /** 这几个事件意味着屏幕可用（亮屏或解锁），黑屏区间到此结束 */
+    const val TYPE_SCREEN_ON = "SCREEN_INTERACTIVE"
+    const val TYPE_KEYGUARD_HIDDEN = "KEYGUARD_HIDDEN"
+    const val TYPE_DEVICE_STARTUP = "DEVICE_STARTUP"
+}
+
+/** 一段连续的时间区间 */
+data class Interval(val startMs: Long, val endMs: Long) {
+    val durationMs: Long get() = endMs - startMs
 }
 
 /** 一段"某个 App 处于前台"的时间区间，已按 [fromMs, toMs] 裁剪过 */

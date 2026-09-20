@@ -39,8 +39,28 @@ class TimeGrid @JvmOverloads constructor(
             invalidate()
         }
 
+    /**
+     * 每格是否以**黑屏（息屏/锁屏）**为主，和 [hourCells] 一一对应。
+     *
+     * 这是和"数据没记到"的关键区分：两者在格子里都是"没有 App 前台"，
+     * 但黑屏是设备正常关着，而空背景可能是采集断了。后者是故障信号，
+     * 不该被伪装成前者。
+     */
+    var lockedHourCells: List<Boolean> = List(HOURS) { false }
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     /** 选中小时的 60 个分钟格。未选中任何小时时为空 */
     var minuteCells: List<String?> = emptyList()
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    /** 选中小时的 60 个分钟格是否黑屏 */
+    var lockedMinuteCells: List<Boolean> = emptyList()
         set(value) {
             field = value
             invalidate()
@@ -122,7 +142,10 @@ class TimeGrid @JvmOverloads constructor(
         val hw = w / HOURS
         for (i in 0 until HOURS) {
             val left = i * hw
-            drawCell(canvas, left, hourTop, left + hw - 2f, hourBottom, hourCells.getOrNull(i))
+            drawCell(
+                canvas, left, hourTop, left + hw - 2f, hourBottom,
+                hourCells.getOrNull(i), lockedHourCells.getOrElse(i) { false },
+            )
             // 时格够宽（1080px 下约 45px），直接把小时数字写进去
             canvas.drawText(
                 i.toString(),
@@ -152,7 +175,10 @@ class TimeGrid @JvmOverloads constructor(
                 val left = col * mw
                 val top = if (row == 0) minTopA else minTopB
                 val bottom = if (row == 0) minBottomA else minBottomB
-                drawCell(canvas, left, top, left + mw - 2f, bottom, minuteCells.getOrNull(m))
+                drawCell(
+                    canvas, left, top, left + mw - 2f, bottom,
+                    minuteCells.getOrNull(m), lockedMinuteCells.getOrElse(m) { false },
+                )
             }
             // 每 10 分钟标一个刻度，否则 60 个格子分不清哪格是几分
             for (m in 0 until MINUTES step 10) {
@@ -164,8 +190,15 @@ class TimeGrid @JvmOverloads constructor(
         }
     }
 
-    private fun drawCell(canvas: Canvas, l: Float, t: Float, r: Float, b: Float, pkg: String?) {
-        cellPaint.color = pkg?.let { AppColors.of(it) } ?: AppColors.EMPTY
+    private fun drawCell(
+        canvas: Canvas, l: Float, t: Float, r: Float, b: Float,
+        pkg: String?, locked: Boolean,
+    ) {
+        cellPaint.color = when {
+            pkg != null -> AppColors.of(pkg)      // 有 App 在前台，优先显示它
+            locked -> AppColors.LOCKED            // 黑屏（息屏/锁屏）
+            else -> AppColors.EMPTY               // 没信息：可能是切应用的瞬间，也可能是数据断了
+        }
         rect.set(l, t, r, b)
         canvas.drawRoundRect(rect, 3f, 3f, cellPaint)
     }

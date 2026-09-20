@@ -14,8 +14,16 @@ object AppColors {
 
     private val cache = HashMap<String, Int>()
 
-    /** 该格没有前台活动时的底色 */
+    /** 该格没有前台活动、也没有黑屏信息时的底色（可能是切应用瞬间，也可能数据断了） */
     const val EMPTY = 0xFFE8E8E8.toInt()
+
+    /**
+     * 黑屏（息屏 / 锁屏）但设备开机。
+     *
+     * 用红色是为了和"没有信息"的背景色区分开 —— 背景色是**故障信号**（数据没采到），
+     * 而黑屏是设备正常关着，两者混在一起会把采集故障伪装成"没在用手机"。
+     */
+    const val LOCKED = 0xFFC62828.toInt()
 
     fun of(pkg: String): Int = cache.getOrPut(pkg) {
         val hue = ((pkg.hashCode() % 360) + 360) % 360
