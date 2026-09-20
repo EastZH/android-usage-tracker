@@ -58,8 +58,9 @@ class MainActivity : Activity() {
     private lateinit var touchedValue: TextView
     private lateinit var adapter: ArrayAdapter<String>
 
-    // 下面这几份数据由 refresh() 填，供点选回调直接取用，不必每次点都重查数据库
-    private var todayUsage: List<PackageUsage> = emptyList()
+    // 下面这几份数据由 refresh() 填，供点选回调直接取用，不必每次点都重查数据库。
+    // 名字里刻意不带 "today" —— 它装的是**当前选中周期**的数据，随「今天/本周/本月」变。
+    private var periodUsage: List<PackageUsage> = emptyList()
     private var hourBuckets: List<HourBucket> = emptyList()
     private var minuteCellsByHour: List<List<String?>> = emptyList()
 
@@ -340,8 +341,12 @@ class MainActivity : Activity() {
             timeGrid.visibility = if (isDayMode) View.VISIBLE else View.GONE
             touchedValue.visibility = if (isDayMode) View.VISIBLE else View.GONE
 
+            // 必须**无条件**更新。之前这行写在 `if (isDayMode)` 里面，
+            // 结果切到「本周/本月」时 periodUsage 还留着上一次「今天」的数据 ——
+            // 界面就一直是今天的信息，和周期标签对不上。
+            periodUsage = usage
+
             if (isDayMode && grid != null) {
-                todayUsage = usage
                 hourBuckets = buckets
                 minuteCellsByHour = grid.minuteCellsByHour
                 timeGrid.hourCells = grid.hourCells
@@ -375,7 +380,7 @@ class MainActivity : Activity() {
                     UsageRange.MONTH -> R.string.range_label_month
                 }
             )
-            renderUsage(todayUsage)
+            renderUsage(periodUsage)
         } else {
             rangeLabel.text = getString(R.string.range_label_hour, hour)
             renderUsage(hourBuckets.firstOrNull { it.hour == hour }?.apps ?: emptyList())
