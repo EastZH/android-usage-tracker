@@ -57,7 +57,22 @@ object SessionDeriver {
             when (e.eventType) {
                 TYPE_RESUMED -> set.add(e.className)
                 TYPE_PAUSED, TYPE_STOPPED -> set.remove(e.className)
-                else -> continue   // 亮灭屏、锁屏等全局事件不参与前台判定
+                // 息屏 / 锁屏 / 关机：**不可能有任何应用在前台**，这是没有歧义的判据。
+                // 用它把此刻所有还开着的区间就地闭合。
+                //
+                // 不加这道闸会出真 bug：应用被系统杀掉、或因安装/卸载被 force-stop 时，
+                // 不会产生 PAUSED/STOPPED 事件，那个区间就永远开着。而下面"悬空区间算到
+                // 窗口末尾"的逻辑会让它一路算下去 —— 表现为"我明明没开它，却显示用了好几个
+                // 小时"，而且数字还在随时间涨，直到下次它真的被关闭才塌回真实值。
+                TYPE_SCREEN_OFF, TYPE_KEYGUARD_SHOWN, TYPE_DEVICE_SHUTDOWN -> {
+                    for ((p, s2) in live) {
+                        if (s2.isEmpty()) continue
+                        openedAt.remove(p)?.let { start -> emit(out, p, start, e.tsMillis, fromMs, toMs) }
+                        s2.clear()
+                    }
+                    continue
+                }
+                else -> continue   // 其余全局事件不参与前台判定
             }
 
             val nowForeground = set.isNotEmpty()
@@ -105,6 +120,11 @@ object SessionDeriver {
     const val TYPE_RESUMED = "ACTIVITY_RESUMED"
     const val TYPE_PAUSED = "ACTIVITY_PAUSED"
     const val TYPE_STOPPED = "ACTIVITY_STOPPED"
+
+    /** 这三个事件意味着"此刻没有任何应用在前台"，用来闭合悬空区间 */
+    const val TYPE_SCREEN_OFF = "SCREEN_NON_INTERACTIVE"
+    const val TYPE_KEYGUARD_SHOWN = "KEYGUARD_SHOWN"
+    const val TYPE_DEVICE_SHUTDOWN = "DEVICE_SHUTDOWN"
 }
 
 /** 一段"某个 App 处于前台"的时间区间，已按 [fromMs, toMs] 裁剪过 */

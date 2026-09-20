@@ -155,4 +155,79 @@ class SessionDeriverTest {
         // 窗口完全落在区间之外
         assertEquals(0, SessionDeriver.sessions(events, 500_000, 600_000).size)
     }
+
+    // ---------- 悬空区间必须被息屏/锁屏/关机截断 ----------
+    //
+    // 应用被系统杀掉、或因安装卸载被 force-stop 时不会产生 PAUSED/STOPPED 事件，
+    // 那个区间就永远开着。若不截断，"悬空区间算到窗口末尾"的逻辑会让它一路算下去
+    // —— 表现为"我明明没开它，却显示用了好几个小时"，且数字随时间增长。
+
+    @Test
+    fun `息屏截断悬空区间`() {
+        val events = listOf(
+            resume(100, "p"),                                  // 打开
+            ev(200, "android", "SCREEN_NON_INTERACTIVE"),      // 息屏 —— 不可能还在前台
+        )
+        // 窗口拉到 1000s。没有截断的话会被算成 900s。
+        val r = SessionDeriver.foregroundMillis(events, 0, 1_000_000)
+        assertEquals(100_000L, r["p"])
+    }
+
+    @Test
+    fun `锁屏也能截断悬空区间`() {
+        val events = listOf(
+            resume(100, "p"),
+            ev(150, "android", "KEYGUARD_SHOWN"),
+        )
+        val r = SessionDeriver.foregroundMillis(events, 0, 1_000_000)
+        assertEquals(50_000L, r["p"])
+    }
+
+    @Test
+    fun `关机也能截断悬空区间`() {
+        val events = listOf(
+            resume(100, "p"),
+            ev(120, "android", "DEVICE_SHUTDOWN"),
+        )
+        val r = SessionDeriver.foregroundMillis(events, 0, 1_000_000)
+        assertEquals(20_000L, r["p"])
+    }
+
+    @Test
+    fun `息屏一次截断所有还开着的应用`() {
+        val events = listOf(
+            resume(100, "p"),
+            resume(110, "q"),
+            ev(200, "android", "SCREEN_NON_INTERACTIVE"),
+        )
+        val r = SessionDeriver.foregroundMillis(events, 0, 1_000_000)
+        assertEquals(100_000L, r["p"])
+        assertEquals(90_000L, r["q"])
+    }
+
+    @Test
+    fun `息屏之后重新亮屏开启的新区间不受影响`() {
+        val events = listOf(
+            resume(100, "p"),
+            ev(200, "android", "SCREEN_NON_INTERACTIVE"),   // 截断 → p 得 100s
+            resume(300, "p"),
+            pause(350, "p"),                                 // 正常闭合 → 再得 50s
+        )
+        val r = SessionDeriver.foregroundMillis(events, 0, 1_000_000)
+        assertEquals(150_000L, r["p"])
+    }
+
+    @Test
+    fun `普通全局事件不应截断区间`() {
+        // STANDBY_BUCKET_CHANGED / CONFIGURATION_CHANGE 之类不代表离开前台，
+        // 如果把它们也当成截断信号，正常使用会被切得七零八落。
+        val events = listOf(
+            resume(100, "p"),
+            ev(150, "p", "STANDBY_BUCKET_CHANGED"),
+            ev(200, "p", "CONFIGURATION_CHANGE"),
+            pause(300, "p"),
+        )
+        val r = SessionDeriver.foregroundMillis(events, 0, 1_000_000)
+        assertEquals(200_000L, r["p"])
+    }
 }

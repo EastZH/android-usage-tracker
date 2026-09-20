@@ -226,11 +226,15 @@ class MainActivity : Activity() {
     }
 
     private fun setRange(r: UsageRange) {
-        if (range == r) return
+        // 注意不能在这里 `if (range == r) return` —— 用户点已经选中的那个口径，
+        // 意图通常是"回到总体视图、取消小时选中"，直接返回会让这个点击毫无反应。
+        val changed = range != r
         range = r
-        // 换口径时锚点保持在"当前"，否则从「今天」切到「本月」会停在一个奇怪的历史月份
-        anchorMs = System.currentTimeMillis()
+        // 换口径时锚点回到"当前"，否则从「今天」切到「本月」会停在一个奇怪的历史月份
+        if (changed) anchorMs = System.currentTimeMillis()
         timeGrid.selectedHour = -1
+        timeGrid.minuteCells = emptyList()
+        touchedValue.text = ""
         updateRangeButtons()
         refresh()
     }
